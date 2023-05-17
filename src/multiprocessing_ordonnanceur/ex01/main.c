@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <errno.h>
 // Socketpair
 #include <sys/socket.h>
 // CPU
@@ -33,7 +34,8 @@ void ignore_signal(int sigals[], int size)
 {
     int i, ret;
 
-    struct sigaction sa = {.sa_handler = catch_signal, };
+    //struct sigaction sa = {.sa_handler = SIG_IGN, }; // Ignore signal
+    struct sigaction sa = {.sa_handler = catch_signal, }; // Catch signal
     sigemptyset(&sa.sa_mask);
     // For each signals
     for (i = 0; i < size; i++) {
@@ -111,7 +113,10 @@ void parent(int sockets[2])
         n = recv(sockets[0], buffer, BUFFER_SIZE, 0);
         if (n < 0) {
             perror("p-recv");
-            exit(EXIT_FAILURE);
+            if (errno != EINTR) {
+                exit(EXIT_FAILURE);
+            }
+            continue;
         }
         
         printf("Message from child: %s\n", buffer);
@@ -138,7 +143,7 @@ int main(void)
     int size = sizeof(signals) / sizeof(signals[0]);
     int i, ret;
 
-    printf("Hello from main process!!\n");
+    printf("Hello from main process!\n");
     ignore_signal(signals, size);
 
     //Generate all signals
