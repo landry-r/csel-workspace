@@ -42,7 +42,7 @@ int main(void)
 
     pid_t pid;
     // CPU à utiliser
-    int cpu_high = 1;
+    int cpu_high = 2;
     int cpu_low = 2;
     int cpu_high_usage = 750; // Diviser par 10 pour avoir le pourcentage 
     int cpu_low_usage = 250; // Diviser par 10 pour avoir le pourcentage
@@ -136,30 +136,7 @@ int main(void)
 
         //exit(EXIT_SUCCESS);
     }
-/*
-    // Création du processus 2
-    pid = fork();
-    printf("Create process %d\n", getpid());
-    if (pid < 0) {
-        perror("fork");
-        exit(EXIT_FAILURE);
-    } else if (pid == 2) {// Processus enfant 2
-        printf("Create child process %d\n", getpid());
-        // Limiter l'utilisation du CPU
-        int cpuFile = open("/sys/fs/cgroup/cpuset/low/cpuset.cpus", O_WRONLY);
-        int memFile = open("/sys/fs/cgroup/cpuset/low/cpuset.mems", O_WRONLY);
-        if (cpuFile == -1 || memFile == -1) {
-            perror("open");
-            exit(EXIT_FAILURE);
-        }
-        write(cpuFile, &cpu_low, sizeof(cpu_low));
-        close(cpuFile);
-        write(memFile, "0", 1);
-        close(memFile);
 
-        exit(EXIT_SUCCESS);
-    }
-*/
     // Attente de la fin des processus enfants
     int status;
     int err = wait(&status);
