@@ -242,6 +242,7 @@ int main(int argc, char* argv[])
 
         int toggle = ((k == 0) && (delta >= p1)) | ((k == 1) && (delta >= p2));
 
+        // Update LED status
         if (toggle) {
             t1 = t2;
             k  = (k + 1) % 2;

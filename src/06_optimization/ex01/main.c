@@ -14,7 +14,7 @@ int main (void)
         {
             for (j = 0; j < SIZE; j++)
             {
-                array[j][i]++;
+                array[i][j]++;
             }
         }
     }
