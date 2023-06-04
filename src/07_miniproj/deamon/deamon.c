@@ -12,7 +12,7 @@ int main()
     ssd1306_puts("--------------");
 
     ssd1306_set_position (0,3);
-    ssd1306_puts("Temp: 35'C");
+    ssd1306_puts("Temp: 35°C");
     ssd1306_set_position (0,4);
     ssd1306_puts("Freq: 1Hz");
     ssd1306_set_position (0,5);
