@@ -29,8 +29,6 @@
 #include <syslog.h>
 #include <unistd.h>
 
-#include "ssd1306.h"
-
 #define S1  "0"
 #define S2  "2"
 #define S3  "3"
@@ -109,37 +107,11 @@ static void catch_signal(int signal)
     signal_catched++;
 }
 
-static void fork_process()
-{
-    pid_t pid = fork();
-    switch (pid) {
-        case 0:
-            break;  // child process has been created
-        case -1:
-            syslog(LOG_ERR, "ERROR while forking");
-            exit(1);
-            break;
-        default:
-            exit(0);  // exit parent process with success
-    }
-}
-
-int main(int argc, char* argv[])
-{
+int main(int argc, char* argv[]){
     UNUSED(argc);
     UNUSED(argv);
 
-    // 1. fork off the parent process
-    fork_process();
-
-    // 2. create new session
-    if (setsid() == -1) {
-        syslog(LOG_ERR, "ERROR while creating new session");
-        exit(1);
-    }
-
-    // 3. fork again to get rid of session leading process
-    fork_process();
+    // daemon's steps 1 to 3 skipped
 
     // 4. capture all required signals
     struct sigaction act = {
@@ -180,39 +152,10 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    // 9. option: open syslog for message logging
-    openlog(NULL, LOG_NDELAY | LOG_PID, LOG_DAEMON);
-    syslog(LOG_INFO, "Daemon has started...");
-
-    // 10. option: get effective user and group id for appropriate's one
-    struct passwd* pwd = getpwnam("daemon");
-    if (pwd == 0) {
-        syslog(LOG_ERR, "ERROR while reading daemon password file entry");
-        exit(1);
-    }
-
-    // 11. option: change root directory
-    if (chroot(".") == -1) {
-        syslog(LOG_ERR, "ERROR while changing to new root directory");
-        exit(1);
-    }
-
-    // 12. option: change effective user and group id for appropriate's one
-    if (setegid(pwd->pw_gid) == -1) {
-        syslog(LOG_ERR, "ERROR while setting new effective group id");
-        exit(1);
-    }
-    if (seteuid(pwd->pw_uid) == -1) {
-        syslog(LOG_ERR, "ERROR while setting new effective user id");
-        exit(1);
-    }
-
-    // 13. implement daemon body...
-
     // Export button GPIOs
     if (export_gpio(S1) == -1)
         return -1;
-    if (export_gpio(S3) == -1)
+    if (export_gpio(S2) == -1)
         return -1;
     if (export_gpio(S3) == -1)
         return -1;
@@ -230,10 +173,8 @@ int main(int argc, char* argv[])
     char buttonStateS3;
 
     char frequency[3];
-    char mode;
+    char mode[3];
     char temperature[3];
-
-    ssd1306_init();
 
     while (1) {
         //Read buttons
@@ -241,70 +182,60 @@ int main(int argc, char* argv[])
         int s2_file = open("/sys/class/gpio/gpio2/value", O_RDONLY);  // Button S2
         int s3_file = open("/sys/class/gpio/gpio3/value", O_RDONLY);  // Button S3
 
-        int fs_file = open("/sys/module/supervisor/attributes/frequency", O_RDONLY);  // Frequency from supervisor
-        int mode_file = open("/sys/module/supervisor/attributes/mode", O_RDONLY);  // Mode from supervisor
-        int temp_file = open("/sys/module/supervisor/attributes/temperature", O_RDONLY);  // Temperature from supervisor
+        int fs_file = open("/sys/class/mini_project/supervisor/frequency", O_RDWR);  // Frequency from supervisor
+        int mode_file = open("/sys/class/mini_project/supervisor/mode", O_RDWR);  // Mode from supervisor
+        int temp_file = open("/sys/class/mini_project/supervisor/temperature", O_RDONLY);  // Temperature from supervisor
 
-        if((s1_file!=-1)&&(s2_file!=-1)&&(s3_file!=-1)&&(fs_file!=-1)&&(mode_file!=-1)&&(temp_file!=-1)){ //Giga check
+        printf("%d %d %d %d %d %d \n", s1_file,s2_file,s3_file,fs_file,mode_file,temp_file);
+
+        if( s1_file!=-1 && s2_file!=-1 && s3_file!=-1 && fs_file!=-1 && mode_file!=-1 && temp_file!=-1 ){ //Giga check
+            printf("Enter \n");
             read(s1_file, &buttonStateS1, 1);
             read(s2_file, &buttonStateS2, 1);
             read(s3_file, &buttonStateS3, 1);
 
             read(fs_file, frequency, 2);
-            read(mode_file, &mode, 1);
+            read(mode_file, mode, 2);
             read(temp_file, temperature, 2);
-            
-            close(s1_file);
-            close(s2_file);
-            close(s3_file);
 
             int old_frequency = atoi(frequency);
+            int old_mode = atoi(mode);
 
-            if (buttonStateS1 == '1' && old_frequency < 20) {  // Button S1 pressed
-                old_frequency++;
+            //printf("%c %c %c\n",buttonStateS1,buttonStateS2,buttonStateS3);
 
-                //Update frequency with sysfs
-                sprintf(frequency, "%d", old_frequency);
-                write(fs_file, frequency, 2);
-            }else if (buttonStateS2 == '1' && old_frequency > 1) {  // Button S2 pressed
-                old_frequency--;
-
-                //Update frequency with sysfs
-                sprintf(frequency, "%d", old_frequency);
-                write(fs_file, frequency, 2);
-            }
+           // printf("%s %s %s\n",frequency,mode,temperature);
 
             if (buttonStateS3 == '1') {  // Button S3 pressed
-                mode = (mode == '1') ? '0' : '1';
-
+                old_mode = (old_mode == 1) ? 0 : 1;
                 //Update the mode with sysfs
+                sprintf(mode, "%d", old_mode);
                 write(mode_file, mode, 1);
             }
+            if (old_mode == 0){  // If manual mode is activated
+                if (buttonStateS1 == '1' && old_frequency < 20) {  // Button S1 pressed
+                    old_frequency++;
 
-            close(fs_file);
-            close(mode_file);
-            close(temp_file);
+                    //Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    printf("%s\n",frequency);
+                    write(fs_file, frequency, 2);
+                }else if (buttonStateS2 == '1' && old_frequency > 1) {  // Button S2 pressed
+                    old_frequency--;
 
-            //Update screen information
-            ssd1306_set_position (0,0);
-            ssd1306_puts("CSEL1a - SP.07");
-            ssd1306_set_position (0,1);
-            ssd1306_puts("  Demo - SW");
-            ssd1306_set_position (0,2);
-            ssd1306_puts("--------------");
-
-            char temp_message[20];
-            char freq_message[20];
-            sprintf(temp_message, "Temp: %d'C", old_frequency);
-            sprintf(freq_message, "Freq: %sHz", frequency);
-
-            ssd1306_set_position (0,3);
-            ssd1306_puts(temp_message);
-            ssd1306_set_position (0,4);
-            ssd1306_puts(freq_message);
-            ssd1306_set_position (0,5);
-            ssd1306_puts("Duty: 50%");
+                    //Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    write(fs_file, frequency, 2);
+                }
+            }
         }
+        close(s1_file);
+        close(s2_file);
+        close(s3_file);
+
+        close(fs_file);
+        close(mode_file);
+        close(temp_file);
+
         usleep(100000);
     }
 

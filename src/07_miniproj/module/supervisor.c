@@ -23,38 +23,34 @@ static struct device* sysfs_device = NULL;
 static int frequency = 2;   // Hz
 static int mode = 1;        // 0: manual, 1: auto
 static int temperature = 0; // °C
-static char sysfs_buffer[1000];
 
 ssize_t frequency_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    strcpy(buf, sysfs_buffer);
-    return strlen(buf);
+    return sprintf(buf, "%d\n", frequency);
 }
 
 ssize_t frequency_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-    frequency = simple_strtol(sysfs_buffer, NULL, 10);
+    sscanf(buf, "%d", &frequency);
     return count;
 }
-DEVICE_ATTR(frequency, 0664, frequency_show, frequency_store);
+DEVICE_ATTR(frequency, 0660, frequency_show, frequency_store);
 
 ssize_t mode_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    strcpy(buf, sysfs_buffer);
-    return strlen(buf);
+    return sprintf(buf, "%d\n", mode);
 }
 
 ssize_t mode_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
-    mode = simple_strtol(sysfs_buffer, NULL, 10);
+    sscanf(buf, "%d", &mode);
     return count;
 }
-DEVICE_ATTR(mode, 0664, mode_show, mode_store);
+DEVICE_ATTR(mode, 0660, mode_show, mode_store);
 
 ssize_t temperature_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-    strcpy(buf, sysfs_buffer);
-    return strlen(buf);
+    return sprintf(buf, "%d\n", temperature);
 }
 
 ssize_t temperature_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
@@ -69,19 +65,19 @@ void timer_led_callback(struct timer_list *timer)
     // Regule temperature in auto mode
     if (mode == 1)
     {
-        if (temperature >= 45000) // >=45°C
+        if (temperature >= 45) // >=45°C
         {
             frequency = 20; // 20Hz
         }
-        else if (temperature < 45000) // <45°C
+        else if (temperature < 45) // <45°C
         {
             frequency = 10; // 10Hz
         }
-        else if (temperature < 40000) // <40°C
+        else if (temperature < 40) // <40°C
         {
             frequency = 5; // 5Hz
         }
-        else if (temperature < 35000) // <35°C
+        else if (temperature < 35) // <35°C
         {
             frequency = 2; // 2Hz
         }
@@ -105,6 +101,7 @@ void timer_temp_callback(struct timer_list *timer)
         pr_err("Failed to get temperature with error %d\n", err);
         return;
     }
+    temperature /= 1000;
     pr_info("temperature: %d\n", temperature);
 
     // Restart timer
@@ -156,6 +153,9 @@ static int __init supervisor_init(void)
         pr_err("Failed to set GPIO %d as output\n", LED);
         return -1;
     }
+
+    //Get termal zone device
+    cpu_thermal = thermal_zone_get_zone_by_name("cpu-thermal");
 
     // timer
     timer_setup(&timer_led, timer_led_callback, 0);
