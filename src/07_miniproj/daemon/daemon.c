@@ -112,6 +112,21 @@ static int configure_gpio(const char* gpio,
     return 0;
 }
 
+static void fork_process()
+{
+    pid_t pid = fork();
+    switch (pid) {
+        case 0:
+            break;  // child process has been created
+        case -1:
+            syslog(LOG_ERR, "ERROR while forking");
+            exit(1);
+            break;
+        default:
+            exit(0);  // exit parent process with success
+    }
+}
+
 static void catch_signal(int signal)
 {
     syslog(LOG_INFO, "signal=%d catched\n", signal);
@@ -361,7 +376,11 @@ int main(int argc, char* argv[])
 {
     UNUSED(argc);
     UNUSED(argv);
+	
+	// 1. fork off the parent process
+    fork_process();
 
+<<<<<<< HEAD
     // 1. fork off the parent process
     /*
         fork_process();
@@ -376,6 +395,17 @@ int main(int argc, char* argv[])
         fork_process();
     */
     printf("Daemon started with PID=%d\n", getpid());
+=======
+    // 2. create new session
+    if (setsid() == -1) {
+        syslog(LOG_ERR, "ERROR while creating new session");
+        exit(1);
+    }
+
+    // 3. fork again to get rid of session leading process
+    fork_process();
+	
+>>>>>>> refs/remotes/origin/main
     // 4. capture all required signals
     struct sigaction act = {
         .sa_handler = catch_signal,
@@ -418,10 +448,90 @@ int main(int argc, char* argv[])
     pid_t pid;
     int sockets[2];
 
+<<<<<<< HEAD
     int err = socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
     if (err < 0) {
         perror("socketpair");
         exit(EXIT_FAILURE);
+=======
+    // Configure button GPIOs
+    if (configure_gpio(S1, "in", "rising") == -1)
+        return -1;
+    if (configure_gpio(S2, "in", "rising") == -1)
+        return -1;
+    if (configure_gpio(S3, "in", "rising") == -1)
+        return -1;
+
+    char buttonStateS1;
+    char buttonStateS2;
+    char buttonStateS3;
+
+    char frequency[3];
+    char mode[3];
+    char temperature[3];
+
+    while (1) {
+        //Read buttons
+        int s1_file = open("/sys/class/gpio/gpio0/value", O_RDONLY);  // Button S1
+        int s2_file = open("/sys/class/gpio/gpio2/value", O_RDONLY);  // Button S2
+        int s3_file = open("/sys/class/gpio/gpio3/value", O_RDONLY);  // Button S3
+
+        int fs_file = open("/sys/class/mini_project/supervisor/frequency", O_RDWR);  // Frequency from supervisor
+        int mode_file = open("/sys/class/mini_project/supervisor/mode", O_RDWR);  // Mode from supervisor
+        int temp_file = open("/sys/class/mini_project/supervisor/temperature", O_RDONLY);  // Temperature from supervisor
+
+        //printf("%d %d %d %d %d %d \n", s1_file,s2_file,s3_file,fs_file,mode_file,temp_file);
+
+        if( s1_file!=-1 && s2_file!=-1 && s3_file!=-1 && fs_file!=-1 && mode_file!=-1 && temp_file!=-1 ){ //Giga check
+            printf("Enter \n");
+            read(s1_file, &buttonStateS1, 1);
+            read(s2_file, &buttonStateS2, 1);
+            read(s3_file, &buttonStateS3, 1);
+
+            read(fs_file, frequency, 2);
+            read(mode_file, mode, 2);
+            read(temp_file, temperature, 2);
+
+            int old_frequency = atoi(frequency);
+            int old_mode = atoi(mode);
+
+            //printf("%c %c %c\n",buttonStateS1,buttonStateS2,buttonStateS3);
+
+           // printf("%s %s %s\n",frequency,mode,temperature);
+
+            if (buttonStateS3 == '1') {  // Button S3 pressed
+                old_mode = (old_mode == 1) ? 0 : 1;
+                //Update the mode with sysfs
+                sprintf(mode, "%d", old_mode);
+                write(mode_file, mode, 1);
+            }
+            if (old_mode == 0){  // If manual mode is activated
+                if (buttonStateS1 == '1' && old_frequency < 20) {  // Button S1 pressed
+                    old_frequency++;
+
+                    //Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    printf("%s\n",frequency);
+                    write(fs_file, frequency, 2);
+                }else if (buttonStateS2 == '1' && old_frequency > 1) {  // Button S2 pressed
+                    old_frequency--;
+
+                    //Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    write(fs_file, frequency, 2);
+                }
+            }
+        }
+        close(s1_file);
+        close(s2_file);
+        close(s3_file);
+
+        close(fs_file);
+        close(mode_file);
+        close(temp_file);
+
+        usleep(100000);
+>>>>>>> refs/remotes/origin/main
     }
 
     pid = fork();
