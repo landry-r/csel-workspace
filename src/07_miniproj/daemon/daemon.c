@@ -101,6 +101,21 @@ static int configure_gpio(const char* gpio, const char* direction, const char* e
     return 0;
 }
 
+static void fork_process()
+{
+    pid_t pid = fork();
+    switch (pid) {
+        case 0:
+            break;  // child process has been created
+        case -1:
+            syslog(LOG_ERR, "ERROR while forking");
+            exit(1);
+            break;
+        default:
+            exit(0);  // exit parent process with success
+    }
+}
+
 static void catch_signal(int signal)
 {
     syslog(LOG_INFO, "signal=%d catched\n", signal);
@@ -110,9 +125,19 @@ static void catch_signal(int signal)
 int main(int argc, char* argv[]){
     UNUSED(argc);
     UNUSED(argv);
+	
+	// 1. fork off the parent process
+    fork_process();
 
-    // daemon's steps 1 to 3 skipped
+    // 2. create new session
+    if (setsid() == -1) {
+        syslog(LOG_ERR, "ERROR while creating new session");
+        exit(1);
+    }
 
+    // 3. fork again to get rid of session leading process
+    fork_process();
+	
     // 4. capture all required signals
     struct sigaction act = {
         .sa_handler = catch_signal,
@@ -186,7 +211,7 @@ int main(int argc, char* argv[]){
         int mode_file = open("/sys/class/mini_project/supervisor/mode", O_RDWR);  // Mode from supervisor
         int temp_file = open("/sys/class/mini_project/supervisor/temperature", O_RDONLY);  // Temperature from supervisor
 
-        printf("%d %d %d %d %d %d \n", s1_file,s2_file,s3_file,fs_file,mode_file,temp_file);
+        //printf("%d %d %d %d %d %d \n", s1_file,s2_file,s3_file,fs_file,mode_file,temp_file);
 
         if( s1_file!=-1 && s2_file!=-1 && s3_file!=-1 && fs_file!=-1 && mode_file!=-1 && temp_file!=-1 ){ //Giga check
             printf("Enter \n");
