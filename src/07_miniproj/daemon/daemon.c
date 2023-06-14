@@ -45,19 +45,6 @@
 
 static int signal_catched = 0;
 
-static int frequency_ = -1;
-static int mode_      = -1;
-
-void set_frequency(int frequency) { frequency_ = frequency; }
-
-int get_frequency() { return frequency_; }
-
-/*static int* frequency_ = NULL;
-
-void set_frequency(int* frequency) { frequency_ = frequency; }
-
-int* get_frequency() { return frequency_; }*/
-
 static int export_gpio(const char* gpio)
 {
     // unexport pin out of sysfs (reinitialization)
@@ -134,13 +121,38 @@ static void catch_signal(int signal)
     signal_catched++;
 }
 
+static void fork_process()
+{
+    pid_t pid = fork();
+    switch (pid) {
+        case 0:
+            break;  // child process has been created
+        case -1:
+            syslog(LOG_ERR, "ERROR while forking");
+            exit(1);
+            break;
+        default:
+            exit(0);  // exit parent process with success
+    }
+}
+
 int main(int argc, char* argv[])
 {
     syslog(LOG_INFO, "daemon started\n");
     UNUSED(argc);
     UNUSED(argv);
 
-    // daemon's steps 1 to 3 skipped
+    // 1. fork off the parent process
+    fork_process();
+
+    // 2. create new session
+    if (setsid() == -1) {
+        syslog(LOG_ERR, "ERROR while creating new session");
+        exit(1);
+    }
+
+    // 3. fork again to get rid of session leading process
+    fork_process();
 
     // 4. capture all required signals
     struct sigaction act = {
@@ -182,236 +194,134 @@ int main(int argc, char* argv[])
     }
 
     ssd1306_init();
-    pid_t pid;
 
-    pid = fork();
-    if (pid < 0) {
-        syslog(LOG_ERR, "ERROR while forking");
-        exit(1);
-    }
+    // Export button GPIOs
+    if (export_gpio(S1) == -1) return -1;
+    if (export_gpio(S2) == -1) return -1;
+    if (export_gpio(S3) == -1) return -1;
 
-    if (pid == 0) {  // Main process
-        // Export button GPIOs
-        if (export_gpio(S1) == -1) return -1;
-        if (export_gpio(S2) == -1) return -1;
-        if (export_gpio(S3) == -1) return -1;
+    // Configure button GPIOs
+    if (configure_gpio(S1, "in", "rising") == -1) return -1;
+    if (configure_gpio(S2, "in", "rising") == -1) return -1;
+    if (configure_gpio(S3, "in", "rising") == -1) return -1;
 
-        // Configure button GPIOs
-        if (configure_gpio(S1, "in", "rising") == -1) return -1;
-        if (configure_gpio(S2, "in", "rising") == -1) return -1;
-        if (configure_gpio(S3, "in", "rising") == -1) return -1;
+    char buttonStateS1;
+    char buttonStateS2;
+    char buttonStateS3;
 
-        char buttonStateS1;
-        char buttonStateS2;
-        char buttonStateS3;
+    char frequency[3];
+    char mode[3];
+    char temperature[3];
+    while (1) {
+        int s1_file =
+            open("/sys/class/gpio/gpio0/value", O_RDONLY);  // Button S1
+        int s2_file =
+            open("/sys/class/gpio/gpio2/value", O_RDONLY);  // Button S2
+        int s3_file =
+            open("/sys/class/gpio/gpio3/value", O_RDONLY);  // Button S3
 
-        char frequency[3];
-        char mode[3];
-        char temperature[3];
-        while (1) {
-            int s1_file =
-                open("/sys/class/gpio/gpio0/value", O_RDONLY);  // Button S1
-            int s2_file =
-                open("/sys/class/gpio/gpio2/value", O_RDONLY);  // Button S2
-            int s3_file =
-                open("/sys/class/gpio/gpio3/value", O_RDONLY);  // Button S3
+        int fs_file   = open("/sys/class/mini_project/supervisor/frequency",
+                           O_RDWR);  // Frequency from supervisor
+        int mode_file = open("/sys/class/mini_project/supervisor/mode",
+                             O_RDWR);  // Mode from supervisor
+        int temp_file = open("/sys/class/mini_project/supervisor/temperature",
+                             O_RDONLY);  // Temperature from supervisor
 
-            int fs_file   = open("/sys/class/mini_project/supervisor/frequency",
-                               O_RDWR);  // Frequency from supervisor
-            int mode_file = open("/sys/class/mini_project/supervisor/mode",
-                                 O_RDWR);  // Mode from supervisor
-            int temp_file =
-                open("/sys/class/mini_project/supervisor/temperature",
-                     O_RDONLY);  // Temperature from supervisor
+        if (s1_file != -1 && s2_file != -1 && s3_file != -1 && fs_file != -1 &&
+            mode_file != -1 && temp_file != -1) {
+            int ret = read(s1_file, &buttonStateS1, 1);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading button S1");
+                exit(1);
+            }
+            ret = read(s2_file, &buttonStateS2, 1);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading button S2");
+                exit(1);
+            }
+            ret = read(s3_file, &buttonStateS3, 1);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading button S3");
+                exit(1);
+            }
 
-            if (s1_file != -1 && s2_file != -1 && s3_file != -1 &&
-                fs_file != -1 && mode_file != -1 && temp_file != -1) {
-                /*syslog(LOG_INFO, "Before get_frequency");
-                                int* myfreq = get_frequency();
-                                syslog(LOG_INFO, "After get_frequency");
-                                // syslog(LOG_INFO, "INFO: frequency: %d",
-                   myfreq);                     if (myfreq != NULL) {
-                                    // write myfreq in frequency file
-                                    sprintf(frequency, "%d", *myfreq);
-                                    syslog(LOG_INFO, "INFO: frequency: %d",
-                   *frequency);                     write(fs_file, frequency,
-                   2);                     syslog(LOG_INFO, "Before
-                   set_frequency");                     set_frequency(NULL);
-                                    syslog(LOG_INFO, "After set_frequency");
-                                }*/
-                int myfreq = get_frequency();
-                //syslog(LOG_INFO, "INFO: frequency: %d", myfreq);
-                if (myfreq >= 0) {
-                    // write myfreq in frequency file
-                    sprintf(frequency, "%d", myfreq);
-                    syslog(LOG_INFO, "INFO: frequency: %d", frequency);
+            ret = read(fs_file, frequency, 2);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading frequency");
+                exit(1);
+            }
+            ret = read(mode_file, mode, 1);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading mode");
+                exit(1);
+            }
+            ret = read(temp_file, temperature, 2);
+            if (ret == -1) {
+                syslog(LOG_ERR, "ERROR while reading temperature");
+                exit(1);
+            }
+
+            int old_frequency = atoi(frequency);
+            int old_mode      = atoi(mode);
+
+            if (buttonStateS3 == '1') {  // Button S3 pressed
+                old_mode = (old_mode == 1) ? 0 : 1;
+                // Update the mode with sysfs
+                sprintf(mode, "%d", old_mode);
+                write(mode_file, mode, 1);
+            }
+            if (old_mode == 0) {  // If manual mode is activated
+                if (buttonStateS1 == '1' &&
+                    old_frequency < 20) {  // Button S1 pressed
+                    old_frequency++;
+
+                    // Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    printf("%s\n", frequency);
                     write(fs_file, frequency, 2);
-                    set_frequency(-1);
-                } else {
-                    int ret = read(s1_file, &buttonStateS1, 1);
-                    if (ret == -1) {
-                        syslog(LOG_ERR, "ERROR while reading button S1");
-                        exit(1);
-                    }
-                    read(s2_file, &buttonStateS2, 1);
-                    read(s3_file, &buttonStateS3, 1);
+                } else if (buttonStateS2 == '1' &&
+                           old_frequency > 1) {  // Button S2 pressed
+                    old_frequency--;
 
-                    read(fs_file, frequency, 2);
-                    read(mode_file, mode, 2);
-                    read(temp_file, temperature, 2);
-
-                    int old_frequency = atoi(frequency);
-                    int old_mode      = atoi(mode);
-
-                    // printf("%c %c
-                    // %c\n",buttonStateS1,buttonStateS2,buttonStateS3);
-                    // printf("%s %s %s\n",frequency,mode,temperature);
-
-                    if (buttonStateS3 == '1') {  // Button S3 pressed
-                        old_mode = (old_mode == 1) ? 0 : 1;
-                        // Update the mode with sysfs
-                        sprintf(mode, "%d", old_mode);
-                        write(mode_file, mode, 1);
-                    }
-                    if (old_mode == 0) {  // If manual mode is activated
-                        if (buttonStateS1 == '1' &&
-                            old_frequency < 20) {  // Button S1 pressed
-                            old_frequency++;
-
-                            // Update frequency with sysfs
-                            sprintf(frequency, "%d", old_frequency);
-                            printf("%s\n", frequency);
-                            write(fs_file, frequency, 2);
-                        } else if (buttonStateS2 == '1' &&
-                                   old_frequency > 1) {  // Button S2 pressed
-                            old_frequency--;
-
-                            // Update frequency with sysfs
-                            sprintf(frequency, "%d", old_frequency);
-                            write(fs_file, frequency, 2);
-                        }
-                    }
-                }
-            }
-            // i2c screen
-            ssd1306_set_position(0, 0);
-            ssd1306_puts("CSEL1a - SP.07");
-            ssd1306_set_position(0, 1);
-            ssd1306_puts("  Miniproject");
-            ssd1306_set_position(0, 2);
-            ssd1306_puts("--------------");
-            ssd1306_set_position(0, 3);
-            ssd1306_puts("Temp: ");
-            ssd1306_puts(temperature);
-            ssd1306_puts("'C");
-            ssd1306_set_position(0, 4);
-            ssd1306_puts("Freq: ");
-            ssd1306_puts(frequency);
-            ssd1306_puts("Hz ");
-            ssd1306_set_position(0, 5);
-            ssd1306_puts("Mode: ");
-            if (atoi(mode) == 0) {
-                ssd1306_puts("Manual");
-            } else {
-                ssd1306_puts("Auto  ");
-            }
-            usleep(100000);
-            close(s1_file);
-            close(s2_file);
-            close(s3_file);
-
-            close(fs_file);
-            close(mode_file);
-            close(temp_file);
-
-            usleep(100000);
-        }
-    } else if (pid > 0) {  // Socket process
-        int socket_server = socket(AF_INET, SOCK_STREAM, 0);
-        if (socket_server < 0) {
-            perror("Erreur lors de la création du socket");
-            exit(EXIT_FAILURE);
-        }
-
-        // Configurer l'adresse du serveur
-        struct sockaddr_in server_addr;
-        memset(&server_addr, 0, sizeof(server_addr));
-        server_addr.sin_family      = AF_INET;
-        server_addr.sin_addr.s_addr = INADDR_ANY;
-        server_addr.sin_port        = htons(8080);
-
-        // Lier le socket à l'adresse du serveur
-        if (bind(socket_server,
-                 (struct sockaddr*)&server_addr,
-                 sizeof(server_addr)) < 0) {
-            perror(
-                "Erreur lors de la liaison du socket à l'adresse du serveur");
-            exit(EXIT_FAILURE);
-        }
-
-        // Mettre le serveur en écoute pour les connexions entrantes
-        if (listen(socket_server, 5) < 0) {
-            perror("Erreur lors de la mise en écoute du socket");
-            exit(EXIT_FAILURE);
-        }
-
-        syslog(LOG_INFO, "Server listening on port 8080");
-
-        while (1) {
-            // Accepter une nouvelle connexion entrante
-            int socket_client = accept(socket_server, NULL, NULL);
-            if (socket_client < 0) {
-                perror("Erreur lors de l'acceptation de la connexion entrante");
-                exit(EXIT_FAILURE);
-            }
-
-            syslog(LOG_INFO, "New client connected");
-
-            // Gérer la communication avec le client
-            char buffer[1000];
-            int n;
-
-            while (1) {
-                // Lire les données envoyées par le client
-                n = read(socket_client, buffer, sizeof(buffer));
-                if (n < 0) {
-                    perror("Erreur lors de la lecture des données du client");
-                    exit(EXIT_FAILURE);
-                }
-                syslog(LOG_INFO, "Received n: %d", n);
-                if (n == 0) {
-                    // Fin de la connexion avec le client
-                    close(socket_client);
-                    break;
-                }
-
-                if (n > 0) {
-                    char type[24];
-                    char value[3];
-                    syslog(LOG_INFO, "1", buffer);
-                    // separate type and value with :
-                    sscanf(buffer, "%[^:]:%s", type, value);
-                    if (strcmp(type, "frequency") == 0) {
-                        // write value in frequency_
-                        set_frequency(atoi(value));
-                        syslog(LOG_INFO, "frequencyyy: %d", get_frequency());
-
-                    } else if (strcmp(type, "mode") == 0) {
-                        // Update mode with sysfs
-                    }
-
-                    // Répondre au client la valeur du buffer
-                    /*n = write(socket_client, buffer, strlen(n));
-                    if (n < 0) {
-                        perror(
-                            "Erreur lors de l'envoi de la réponse au client");
-                        exit(EXIT_FAILURE);
-                    }*/
+                    // Update frequency with sysfs
+                    sprintf(frequency, "%d", old_frequency);
+                    write(fs_file, frequency, 2);
                 }
             }
         }
+        // i2c screen
+        ssd1306_set_position(0, 0);
+        ssd1306_puts("CSEL1a - SP.07");
+        ssd1306_set_position(0, 1);
+        ssd1306_puts("  Miniproject");
+        ssd1306_set_position(0, 2);
+        ssd1306_puts("--------------");
+        ssd1306_set_position(0, 3);
+        ssd1306_puts("Temp: ");
+        ssd1306_puts(temperature);
+        ssd1306_puts("'C");
+        ssd1306_set_position(0, 4);
+        ssd1306_puts("Freq: ");
+        ssd1306_puts(frequency);
+        ssd1306_puts("Hz ");
+        ssd1306_set_position(0, 5);
+        ssd1306_puts("Mode: ");
+        if (atoi(mode) == 0) {
+            ssd1306_puts("Manual");
+        } else {
+            ssd1306_puts("Auto  ");
+        }
+
+        close(s1_file);
+        close(s2_file);
+        close(s3_file);
+
+        close(fs_file);
+        close(mode_file);
+        close(temp_file);
+
+        usleep(100000);
     }
-
     syslog(LOG_INFO,
            "daemon stopped. Number of signals catched=%d\n",
            signal_catched);

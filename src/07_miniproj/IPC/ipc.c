@@ -1,80 +1,66 @@
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#define PORT 8080
-#define SERVER_ADDRESS "127.0.0.1"
-
-int send_msg(int socket_server, char* buf)
+char* toLower(char* s)
 {
-    printf("Envoi de données au serveur : %s\n", buf);
-    if (write(socket_server, buf, strlen(buf)) < 0) {
-        perror("Erreur lors de l'envoi des données au serveur");
-        return -1;
-    }
-
-    // Recevoir la réponse du serveur
-    /*char buffer[256];
-    int n = read(socket_server, buffer, sizeof(buffer) - 1);
-    if (n < 0) {
-        perror("Erreur lors de la lecture de la réponse du serveur");
-        return -1;
-    }
-
-    buffer[n] = '\0';
-    printf("Réponse du serveur : %s\n", buffer);
-*/
-    return 0;
+    for (char* p = s; *p; p++) *p = tolower(*p);
+    return s;
 }
 
-int main()
+int main(int argc, char* argv[])
 {
-    // Étape 1: Créer le socket
-    int socket_server = socket(AF_INET, SOCK_STREAM, 0);
-    if (socket_server < 0) {
-        perror("Erreur lors de la création du socket");
+    if (argc < 3) {
+        printf("Usage: %s <type> <value>\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
-    // Étape 2: Configurer l'adresse du serveur
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port   = htons(PORT);
-    if (inet_pton(AF_INET, SERVER_ADDRESS, &server_addr.sin_addr) <= 0) {
-        perror("Erreur lors de la configuration de l'adresse du serveur");
+    char* type  = argv[1];
+    char* value = argv[2];
+
+    if (strcmp(type, "frequency") == 0) {
+        // check correct value
+        if (atoi(value) < 0 || atoi(value) > 20) {
+            printf("Value must be between 0 and 20.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        int fs_file =
+            open("/sys/class/mini_project/supervisor/frequency", O_RDWR);
+        if (fs_file < 0) {
+            perror("Erreur lors de l'ouverture du fichier frequency");
+            exit(EXIT_FAILURE);
+        }
+        write(fs_file, value, strlen(value));
+        close(fs_file);
+    } else if (strcmp(type, "mode") == 0) {
+        // check correct value
+        if (strcmp(toLower(value), "auto") == 0) {
+            value = "1";
+        } else if (strcmp(toLower(value), "manual") == 0) {
+            value = "0";
+        } else if (atoi(value) == 0 || atoi(value) == 1) {
+            // value is already correct
+        } else {
+            printf("invalid mode.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        int mode_file = open("/sys/class/mini_project/supervisor/mode", O_RDWR);
+        if (mode_file < 0) {
+            perror("Erreur lors de l'ouverture du fichier mode");
+            exit(EXIT_FAILURE);
+        }
+        write(mode_file, value, strlen(value));
+        close(mode_file);
+    } else {
+        printf("Type de donnée invalide.\n");
         exit(EXIT_FAILURE);
     }
-
-    // Étape 3: Établir la connexion avec le serveur
-    if (connect(socket_server, (struct sockaddr*)&server_addr, sizeof(server_addr)) <
-        0) {
-        perror("Erreur lors de la connexion au serveur");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Connexion établie avec le serveur.\n");
-
-    // Étape 4: Envoyer des données au serveur
-    char* message = "frequency:12";
-    send_msg(socket_server, message);
-
-    sleep(1);
-
-    message = "mode:0";
-    send_msg(socket_server, message);
-
-    sleep(1);
-
-    message = "frequency:24";
-    send_msg(socket_server, message);
-
-    // Étape 6: Fermer la connexion avec le serveur
-    close(socket_server);
 
     return 0;
 }
