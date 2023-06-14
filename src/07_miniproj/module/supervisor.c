@@ -82,7 +82,7 @@ void timer_led_callback(struct timer_list *timer)
             frequency = 2; // 2Hz
         }
     }
-    pr_info("frequency: %d\n", frequency);
+    //pr_info("frequency: %d\n", frequency);
 
     // Toggle LED
     gpio_set_value(LED, !gpio_get_value(LED));
@@ -102,7 +102,7 @@ void timer_temp_callback(struct timer_list *timer)
         return;
     }
     temperature /= 1000;
-    pr_info("temperature: %d\n", temperature);
+    //pr_info("temperature: %d\n", temperature);
 
     // Restart timer
     mod_timer(&timer_temp, jiffies + msecs_to_jiffies(1000));

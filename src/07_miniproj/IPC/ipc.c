@@ -18,7 +18,7 @@ int send_msg(int socket_server, char* buf)
     }
 
     // Recevoir la réponse du serveur
-    char buffer[256];
+    /*char buffer[256];
     int n = read(socket_server, buffer, sizeof(buffer) - 1);
     if (n < 0) {
         perror("Erreur lors de la lecture de la réponse du serveur");
@@ -27,7 +27,7 @@ int send_msg(int socket_server, char* buf)
 
     buffer[n] = '\0';
     printf("Réponse du serveur : %s\n", buffer);
-
+*/
     return 0;
 }
 
