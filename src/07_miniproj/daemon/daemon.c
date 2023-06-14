@@ -267,7 +267,7 @@ int main(int argc, char* argv[])
             if (buttonStateS3 == '1') {  // Button S3 pressed
                 old_mode = (old_mode == 1) ? 0 : 1;
                 // Update the mode with sysfs
-                sprintf(mode, "%d", old_mode);
+                syslog(LOG_INFO, "Mode changed to %d", old_mode);
                 write(mode_file, mode, 1);
             }
             if (old_mode == 0) {  // If manual mode is activated
@@ -276,18 +276,20 @@ int main(int argc, char* argv[])
                     old_frequency++;
 
                     // Update frequency with sysfs
-                    sprintf(frequency, "%d", old_frequency);
-                    printf("%s\n", frequency);
+                    syslog(LOG_INFO, "Frequency changed to %d", old_frequency);
                     write(fs_file, frequency, 2);
                 } else if (buttonStateS2 == '1' &&
                            old_frequency > 1) {  // Button S2 pressed
                     old_frequency--;
 
                     // Update frequency with sysfs
-                    sprintf(frequency, "%d", old_frequency);
+                    syslog(LOG_INFO, "Frequency changed to %d", old_frequency);
                     write(fs_file, frequency, 2);
                 }
             }
+        } else {
+            syslog(LOG_ERR, "ERROR while opening files");
+            exit(1);
         }
         // i2c screen
         ssd1306_set_position(0, 0);
